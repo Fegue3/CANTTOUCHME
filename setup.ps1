@@ -2,7 +2,8 @@
 param(
     [switch]$Down,
     [switch]$Logs,
-    [switch]$Rebuild
+    [switch]$Rebuild,
+    [switch]$Tests
 )
 
 Set-StrictMode -Off
@@ -45,6 +46,99 @@ if ($Down) {
 if ($Logs) {
     & docker compose logs -f
     exit 0
+}
+
+# --- Modo --Tests
+if ($Tests) {
+    Write-Host ""
+    Write-Host "============================================" -ForegroundColor Cyan
+    Write-Host "   CANTTOUCHME - Testes                    " -ForegroundColor Cyan
+    Write-Host "============================================" -ForegroundColor Cyan
+
+    Write-Step "1/4 - Verificar pre-requisitos"
+
+    try {
+        & docker info | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw }
+        Write-Ok "Docker esta a correr."
+    } catch {
+        Write-Fail "Docker nao esta disponivel ou nao esta a correr. Inicia o Docker Desktop e tenta novamente."
+    }
+
+    Write-Step "2/4 - Garantir ficheiros .env"
+
+    if (-not (Test-Path ".env")) {
+        Copy-Item ".env.example" ".env"
+        $pgPass = New-HexSecret -Bytes 16
+        Replace-EnvLine -File ".env" -Key "POSTGRES_PASSWORD" -Value $pgPass
+        Write-Ok "Criado .env"
+    } else {
+        Write-Skip ".env ja existe."
+    }
+    if (-not (Test-Path "backend\.env")) {
+        Copy-Item "backend\.env.example" "backend\.env"
+        $jwtSecret = New-HexSecret -Bytes 32
+        $rsaSecret = New-HexSecret -Bytes 32
+        Replace-EnvLine -File "backend\.env" -Key "JWT_SECRET_KEY"                   -Value $jwtSecret
+        Replace-EnvLine -File "backend\.env" -Key "SYSTEM_RSA_KEY_ENCRYPTION_SECRET" -Value $rsaSecret
+        Write-Ok "Criado backend/.env"
+    } else {
+        Write-Skip "backend/.env ja existe."
+    }
+
+    # Sincronizar DATABASE_URL com as credenciais do root .env
+    $rootEnv  = Get-Content ".env" | Where-Object { $_ -match "^[^#]" }
+    $pgUser   = ($rootEnv | Where-Object { $_ -match "^POSTGRES_USER="     }) -replace "^POSTGRES_USER=",     ""
+    $pgPass   = ($rootEnv | Where-Object { $_ -match "^POSTGRES_PASSWORD=" }) -replace "^POSTGRES_PASSWORD=", ""
+    $pgDb     = ($rootEnv | Where-Object { $_ -match "^POSTGRES_DB="       }) -replace "^POSTGRES_DB=",       ""
+    $dbUrl    = "postgresql://${pgUser}:${pgPass}@localhost:5432/${pgDb}"
+    Replace-EnvLine -File "backend\.env" -Key "DATABASE_URL" -Value $dbUrl
+    Write-Ok "DATABASE_URL sincronizado com root .env"
+
+    Write-Step "3/4 - Iniciar base de dados"
+
+    & docker compose up -d db
+    if ($LASTEXITCODE -ne 0) { Write-Fail "Nao foi possivel arrancar a base de dados." }
+
+    $maxWait = 60; $waited = 0
+    while ($waited -lt $maxWait) {
+        $status = & docker inspect --format "{{.State.Health.Status}}" canttouchme-db 2>$null
+        if ($status -eq "healthy") { break }
+        Start-Sleep -Seconds 2
+        $waited += 2
+    }
+    if ($waited -ge $maxWait) { Write-Fail "Base de dados nao ficou pronta a tempo." }
+    Write-Ok "Base de dados pronta."
+
+    Write-Step "4/4 - Correr pytest"
+
+    # Detectar Python: .venv local tem prioridade
+    $python = $null
+    if (Test-Path "backend\.venv\Scripts\python.exe") {
+        $python = Resolve-Path "backend\.venv\Scripts\python.exe"
+    } elseif (Get-Command python -ErrorAction SilentlyContinue) {
+        $python = "python"
+    } elseif (Get-Command python3 -ErrorAction SilentlyContinue) {
+        $python = "python3"
+    } else {
+        & docker compose stop db | Out-Null
+        Write-Fail "Python nao encontrado. Activa o ambiente virtual ou instala Python 3."
+    }
+
+    Push-Location backend
+    & $python -m pytest tests/ -v
+    $testExit = $LASTEXITCODE
+    Pop-Location
+
+    & docker compose stop db | Out-Null
+
+    Write-Host ""
+    if ($testExit -eq 0) {
+        Write-Ok "Todos os testes passaram."
+    } else {
+        Write-Warn "Alguns testes falharam (exit code: $testExit)."
+    }
+    exit $testExit
 }
 
 Write-Host ""
@@ -180,4 +274,5 @@ Write-Host "  Comandos uteis:" -ForegroundColor DarkGray
 Write-Host "    .\setup.ps1 -Logs     # seguir logs em tempo real" -ForegroundColor DarkGray
 Write-Host "    .\setup.ps1 -Down     # parar e remover containers" -ForegroundColor DarkGray
 Write-Host "    .\setup.ps1 -Rebuild  # reconstruir imagens do zero" -ForegroundColor DarkGray
+Write-Host "    .\setup.ps1 -Tests    # correr testes (pytest)" -ForegroundColor DarkGray
 Write-Host ""

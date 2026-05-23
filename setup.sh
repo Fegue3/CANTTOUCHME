@@ -6,6 +6,7 @@
 #   ./setup.sh --down       # para e remove os containers
 #   ./setup.sh --logs       # segue os logs de todos os servicos
 #   ./setup.sh --rebuild    # forca rebuild das imagens (--no-cache)
+#   ./setup.sh --tests      # inicia BD, corre pytest, para BD
 
 set -euo pipefail
 
@@ -60,6 +61,7 @@ for arg in "$@"; do
         --down)    MODE="down" ;;
         --logs)    MODE="logs" ;;
         --rebuild) REBUILD_FLAG="--no-cache" ;;
+        --tests)   MODE="tests" ;;
     esac
 done
 
@@ -79,6 +81,93 @@ fi
 if [[ "$MODE" == "logs" ]]; then
     docker compose logs -f
     exit 0
+fi
+
+# ---------------------------------------------------------------------------
+# Modo --tests
+# ---------------------------------------------------------------------------
+if [[ "$MODE" == "tests" ]]; then
+    echo ""
+    echo -e "${CYAN}============================================${RESET}"
+    echo -e "${CYAN}   CANTTOUCHME  —  Testes                  ${RESET}"
+    echo -e "${CYAN}============================================${RESET}"
+
+    step "1/4 — Verificar pre-requisitos"
+
+    if ! command -v docker &>/dev/null; then
+        fail "Docker nao esta instalado."
+    fi
+    if ! docker info &>/dev/null; then
+        fail "Docker nao esta a correr. Inicia o Docker Desktop e tenta novamente."
+    fi
+    ok "Docker esta a correr."
+
+    step "2/4 — Garantir ficheiros .env"
+
+    if [[ ! -f ".env" ]]; then
+        cp .env.example .env
+        replace_env_line ".env" "POSTGRES_PASSWORD" "$(new_hex_secret 16)"
+        ok "Criado .env"
+    else
+        skip ".env ja existe."
+    fi
+    if [[ ! -f "backend/.env" ]]; then
+        cp backend/.env.example backend/.env
+        replace_env_line "backend/.env" "JWT_SECRET_KEY"                   "$(new_hex_secret 32)"
+        replace_env_line "backend/.env" "SYSTEM_RSA_KEY_ENCRYPTION_SECRET" "$(new_hex_secret 32)"
+        ok "Criado backend/.env"
+    else
+        skip "backend/.env ja existe."
+    fi
+
+    # Sincronizar DATABASE_URL com as credenciais do root .env
+    pg_user=$(grep "^POSTGRES_USER="     .env | cut -d= -f2)
+    pg_pass=$(grep "^POSTGRES_PASSWORD=" .env | cut -d= -f2)
+    pg_db=$(grep   "^POSTGRES_DB="       .env | cut -d= -f2)
+    replace_env_line "backend/.env" "DATABASE_URL" \
+        "postgresql://${pg_user}:${pg_pass}@localhost:5432/${pg_db}"
+    ok "DATABASE_URL sincronizado com root .env"
+
+    step "3/4 — Iniciar base de dados"
+
+    docker compose up -d db
+    max_wait=60; waited=0
+    while [[ $waited -lt $max_wait ]]; do
+        status=$(docker inspect --format='{{.State.Health.Status}}' canttouchme-db 2>/dev/null || echo "")
+        [[ "$status" == "healthy" ]] && break
+        sleep 2; waited=$((waited + 2))
+    done
+    [[ $waited -ge $max_wait ]] && fail "Base de dados nao ficou pronta a tempo. Verifica: docker compose logs db"
+    ok "Base de dados pronta."
+
+    step "4/4 — Correr pytest"
+
+    set +e
+    (
+        cd backend
+        # Detectar Python: .venv local tem prioridade
+        if [[ -f ".venv/bin/python" ]]; then
+            .venv/bin/python -m pytest tests/ -v
+        elif [[ -f ".venv/Scripts/python.exe" ]]; then
+            .venv/Scripts/python.exe -m pytest tests/ -v
+        elif command -v python3 &>/dev/null; then
+            python3 -m pytest tests/ -v
+        else
+            python -m pytest tests/ -v
+        fi
+    )
+    TEST_EXIT=$?
+    set -e
+
+    docker compose stop db
+
+    echo ""
+    if [[ $TEST_EXIT -eq 0 ]]; then
+        ok "Todos os testes passaram."
+    else
+        warn "Alguns testes falharam (exit code: $TEST_EXIT)."
+    fi
+    exit $TEST_EXIT
 fi
 
 echo ""
@@ -213,5 +302,6 @@ echo -e "  ${GRAY}Comandos uteis:${RESET}"
 echo -e "  ${GRAY}  ./setup.sh --logs     # seguir logs em tempo real${RESET}"
 echo -e "  ${GRAY}  ./setup.sh --down     # parar e remover containers${RESET}"
 echo -e "  ${GRAY}  ./setup.sh --rebuild  # reconstruir imagens do zero${RESET}"
+echo -e "  ${GRAY}  ./setup.sh --tests    # correr testes (pytest)${RESET}"
 echo -e "  ${GRAY}  docker compose logs -f backend   # logs so do backend${RESET}"
 echo ""
