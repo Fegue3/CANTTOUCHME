@@ -15,6 +15,7 @@ OverallStatus = Literal[
     "decrypt_error",
     "chain_affected",
 ]
+ChainStateStatus = Literal["valid", "invalid", "missing"]
 
 
 class RecordCreateRequest(BaseModel):
@@ -52,12 +53,20 @@ class RecordsListResponse(BaseModel):
     records: list[RecordItem]
 
 
+class ChainStateValidation(BaseModel):
+    status: ChainStateStatus
+    block_count_match: bool | None = None
+    last_hash_match: bool | None = None
+    signature: SimpleValidationStatus | None = None
+
+
 class ChainStatusResponse(BaseModel):
     total_blocks: int
     valid_blocks: int
     invalid_blocks: int
     first_invalid_block_index: int | None
     chain_status: Literal["valid", "invalid"]
+    chain_state: ChainStateValidation
 
 
 class RecordVerifyResponse(BaseModel):

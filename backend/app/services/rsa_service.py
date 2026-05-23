@@ -111,6 +111,14 @@ def signature_fields(user_id: str, block_index: int, previous_hash: str, block_h
     }
 
 
+def chain_state_fields(user_id: str, last_hash: str, block_count: int) -> dict[str, str | int]:
+    return {
+        "user_id": user_id,
+        "last_hash": last_hash,
+        "block_count": block_count,
+    }
+
+
 def sign_block(fields: dict[str, str | int]) -> str:
     private_key = _load_active_private_key()
     signature = private_key.sign(

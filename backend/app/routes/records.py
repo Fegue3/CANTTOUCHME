@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.dependencies import AuthContext, require_auth
 from app.schemas.record import (
+    ChainStateValidation,
     ChainStatusResponse,
     RecordCreateRequest,
     RecordCreateResponse,
@@ -54,6 +55,7 @@ def list_records(
 @router.get("/chain/status", response_model=ChainStatusResponse)
 def chain_status(context: AuthContext = Depends(require_auth)) -> ChainStatusResponse:
     records = record_service.validate_records(context.user, context.session)
+    chain_state: ChainStateValidation = record_service.validate_chain_state(context.user["id"])
     valid_blocks = sum(1 for record in records if record.validation.overall == "valid")
     invalid_blocks = len(records) - valid_blocks
     first_invalid = next(
@@ -64,12 +66,14 @@ def chain_status(context: AuthContext = Depends(require_auth)) -> ChainStatusRes
         ),
         None,
     )
+    overall_valid = invalid_blocks == 0 and chain_state.status == "valid"
     return ChainStatusResponse(
         total_blocks=len(records),
         valid_blocks=valid_blocks,
         invalid_blocks=invalid_blocks,
         first_invalid_block_index=first_invalid,
-        chain_status="valid" if invalid_blocks == 0 else "invalid",
+        chain_status="valid" if overall_valid else "invalid",
+        chain_state=chain_state,
     )
 
 

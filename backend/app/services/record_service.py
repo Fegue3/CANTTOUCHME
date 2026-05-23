@@ -120,6 +120,21 @@ def create_record(user: dict[str, Any], session: SessionKeys, text: str) -> dict
                         timestamp,
                     ),
                 )
+                chain_state_sig = rsa_service.sign_block(
+                    rsa_service.chain_state_fields(str(user["id"]), block_hash, block_index)
+                )
+                cursor.execute(
+                    """
+                    INSERT INTO chain_state (user_id, last_hash, block_count, rsa_signature, updated_at)
+                    VALUES (%s, %s, %s, %s, NOW())
+                    ON CONFLICT (user_id) DO UPDATE SET
+                        last_hash = EXCLUDED.last_hash,
+                        block_count = EXCLUDED.block_count,
+                        rsa_signature = EXCLUDED.rsa_signature,
+                        updated_at = EXCLUDED.updated_at
+                    """,
+                    (user["id"], block_hash, block_index, chain_state_sig),
+                )
 
     return {"id": str(record_id), "block_index": block_index}
 
@@ -293,3 +308,47 @@ def find_record_for_user(record_id: UUID, user_id: UUID) -> dict[str, Any] | Non
                 (record_id, user_id),
             )
             return cursor.fetchone()
+
+
+def validate_chain_state(user_id: UUID) -> dict[str, Any]:
+    from app.schemas.record import ChainStateValidation
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT last_hash, block_count, rsa_signature FROM chain_state WHERE user_id = %s",
+                (user_id,),
+            )
+            stored = cursor.fetchone()
+            cursor.execute(
+                "SELECT COUNT(*) AS count FROM records WHERE user_id = %s",
+                (user_id,),
+            )
+            actual_count: int = cursor.fetchone()["count"]
+            actual_last_hash: str | None = None
+            if actual_count > 0:
+                cursor.execute(
+                    "SELECT block_hash FROM records WHERE user_id = %s ORDER BY block_index DESC LIMIT 1",
+                    (user_id,),
+                )
+                actual_last_hash = cursor.fetchone()["block_hash"]
+
+    if actual_count == 0 and stored is None:
+        return ChainStateValidation(status="valid")
+
+    if stored is None:
+        return ChainStateValidation(status="missing")
+
+    count_match = stored["block_count"] == actual_count
+    hash_match = stored["last_hash"] == actual_last_hash
+    sig_valid = rsa_service.verify_signature(
+        rsa_service.chain_state_fields(str(user_id), stored["last_hash"], stored["block_count"]),
+        stored["rsa_signature"],
+    )
+    overall_valid = count_match and hash_match and sig_valid
+    return ChainStateValidation(
+        status="valid" if overall_valid else "invalid",
+        block_count_match=count_match,
+        last_hash_match=hash_match,
+        signature="valid" if sig_valid else "invalid",
+    )

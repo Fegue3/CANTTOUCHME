@@ -103,6 +103,7 @@ A base de dados guarda:
 - HMACs;
 - hashes de blocos;
 - assinaturas RSA;
+- âncora do estado da cadeia por utilizador (`chain_state`);
 - metadados da chave RSA do sistema.
 
 A base de dados nunca guarda:
@@ -273,7 +274,8 @@ A blockchain serve para detectar:
 - alteração de blocos antigos;
 - remoção de blocos intermédios;
 - reordenação de blocos;
-- tentativa de adulteração da sequência de registos.
+- tentativa de adulteração da sequência de registos;
+- remoção do último bloco.
 
 ---
 
@@ -557,7 +559,8 @@ Quando o utilizador cria um registo, o backend:
 8. calcula o HMAC;
 9. calcula o hash do bloco;
 10. assina o bloco com RSA;
-11. guarda o bloco na base de dados.
+11. guarda o bloco na base de dados;
+12. actualiza a âncora `chain_state` com o novo `block_hash` e `block_count`, assinada com RSA, **na mesma transacção atómica**.
 
 ### 9.5 Validação da cadeia
 
@@ -570,6 +573,26 @@ Para cada bloco, valida:
 3. se o `block_hash` recalculado corresponde ao guardado;
 4. se a assinatura RSA é válida;
 5. se o conteúdo pode ser decifrado.
+
+No final, o endpoint `GET /records/chain/status` valida também a âncora `chain_state`:
+
+6. se o `block_count` guardado na âncora coincide com o número de blocos existentes na base de dados;
+7. se o `last_hash` guardado na âncora coincide com o `block_hash` do último bloco;
+8. se a assinatura RSA da âncora é válida.
+
+Se qualquer um dos pontos 6, 7 ou 8 falhar, o `chain_status` é marcado como `invalid`.
+
+### 9.6 Âncora do estado da cadeia (`chain_state`)
+
+A blockchain encadeada apenas detecta remoção de blocos quando existe um bloco seguinte que referencia o removido. O último bloco da cadeia não tem bloco seguinte, pelo que a sua remoção seria indetectável sem um mecanismo adicional.
+
+Para colmatar esta lacuna, o sistema mantém uma âncora por utilizador com o seguinte conteúdo:
+
+- `last_hash` — `block_hash` do bloco mais recente;
+- `block_count` — número total de blocos;
+- `rsa_signature` — assinatura RSA-PSS sobre `{user_id, last_hash, block_count}`.
+
+A âncora é actualizada em cada inserção de bloco, na mesma transacção atómica. Se um atacante apagar o último bloco, o `block_count` guardado na âncora fica a não coincidir com o número real de blocos na base de dados. Como a assinatura RSA da âncora foi calculada com a chave privada do sistema, o atacante não consegue forjar uma âncora válida com o novo `block_count`.
 
 ### 9.6 Estados de validação
 
@@ -657,7 +680,27 @@ O campo `rsa_signature` é guardado em Base64.
 
 O campo `block_hash` pode ser guardado em hexadecimal.
 
-### 10.3 Tabela `system_keys`
+### 10.3 Tabela `chain_state`
+
+Guarda a âncora do estado da cadeia por utilizador.
+
+Campos:
+
+```text
+user_id UUID PRIMARY KEY REFERENCES users(id)
+last_hash TEXT NOT NULL
+block_count INTEGER NOT NULL
+rsa_signature TEXT NOT NULL
+updated_at TIMESTAMP NOT NULL
+```
+
+Existe no máximo uma linha por utilizador.
+
+A linha é criada ou actualizada em cada `POST /records`, na mesma transacção que insere o bloco.
+
+A `rsa_signature` cobre os campos `{user_id, last_hash, block_count}`.
+
+### 10.4 Tabela `system_keys`
 
 Guarda informação sobre as chaves RSA do sistema.
 
@@ -880,9 +923,23 @@ Devolve:
   "valid_blocks": 3,
   "invalid_blocks": 0,
   "first_invalid_block_index": null,
-  "chain_status": "valid"
+  "chain_status": "valid",
+  "chain_state": {
+    "status": "valid",
+    "block_count_match": true,
+    "last_hash_match": true,
+    "signature": "valid"
+  }
 }
 ```
+
+O campo `chain_status` é `"invalid"` se qualquer bloco for inválido **ou** se a âncora `chain_state` não for válida.
+
+O campo `chain_state.status` pode ser:
+
+- `valid` — âncora presente e consistente;
+- `invalid` — âncora presente mas inconsistente (deleção do último bloco, adulteração da âncora);
+- `missing` — âncora ausente apesar de existirem blocos.
 
 ### 11.8 `GET /records/{id}/verify`
 
@@ -1100,8 +1157,11 @@ A implementação deve seguir estas regras:
 - criar vários registos e validar cadeia;
 - alterar `previous_hash`;
 - alterar `block_hash`;
+- alterar `iv_or_nonce`;
+- alterar `rsa_signature`;
 - apagar bloco intermédio directamente na base de dados;
-- confirmar que a cadeia fica inválida.
+- apagar o último bloco directamente na base de dados;
+- confirmar que a cadeia fica inválida em todos os casos acima.
 
 ### 15.5 RSA
 

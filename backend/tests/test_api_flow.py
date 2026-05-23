@@ -282,6 +282,30 @@ def test_chain_detects_intermediate_block_deletion(client: TestClient) -> None:
     assert body["first_invalid_block_index"] == 3
 
 
+def test_chain_detects_last_block_deletion(client: TestClient) -> None:
+    email, token = _create_user_with_three_records(client, "last")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                DELETE FROM records
+                WHERE user_id = (SELECT id FROM users WHERE email = %s)
+                  AND block_index = 3
+                """,
+                (email,),
+            )
+        connection.commit()
+
+    response = client.get("/records/chain/status", headers=headers)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["chain_status"] == "invalid"
+    assert body["chain_state"]["status"] == "invalid"
+    assert body["chain_state"]["block_count_match"] is False
+
+
 def test_system_private_key_is_stored_encrypted(client: TestClient) -> None:
     email = _email("key")
     _register(client, email)
