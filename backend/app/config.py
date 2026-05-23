@@ -14,6 +14,12 @@ class Settings:
     app_name: str
     database_url: str
     backend_cors_origins: list[str]
+    jwt_secret_key: str
+    access_token_expire_minutes: int
+    session_expire_minutes: int
+    bcrypt_cost: int
+    pbkdf2_iterations: int
+    system_rsa_key_encryption_secret: str
 
 
 @lru_cache
@@ -28,5 +34,14 @@ def get_settings() -> Settings:
         ),
         backend_cors_origins=_split_csv(
             os.getenv("BACKEND_CORS_ORIGINS", "http://localhost:5173")
+        ),
+        jwt_secret_key=os.getenv("JWT_SECRET_KEY", "dev-only-change-this-jwt-secret-32-bytes-min"),
+        access_token_expire_minutes=int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30")),
+        session_expire_minutes=int(os.getenv("SESSION_EXPIRE_MINUTES", "30")),
+        bcrypt_cost=int(os.getenv("BCRYPT_COST", "12")),
+        pbkdf2_iterations=int(os.getenv("PBKDF2_ITERATIONS", "600000")),
+        system_rsa_key_encryption_secret=os.getenv(
+            "SYSTEM_RSA_KEY_ENCRYPTION_SECRET",
+            "dev-only-change-this-rsa-secret",
         ),
     )

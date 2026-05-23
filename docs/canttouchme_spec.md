@@ -1470,5 +1470,47 @@ Implementado com:
 
 - ataque de alteração ou remoção manual de bloco antigo na base de dados.
 
+## 22. Entrega no Moodle
+
+A entrega será feita exclusivamente através do Moodle até às 23:59 do dia 31/05/2026.
+
+Cada ficheiro submetido não pode ultrapassar 10 MB.
+
+A entrega deve incluir:
+
+- código da aplicação;
+- scripts de instalação ou execução;
+- README com instruções;
+- ficheiro `.env.example`;
+- documentação técnica;
+- diagrama do sistema;
+- diagrama do ataque;
+- testes ou instruções para correr testes;
+- artefactos que provem autoria e originalidade do trabalho.
+
+Como a aplicação é web, não será entregue um executável `.exe`. Em vez disso, serão entregues scripts de execução, Dockerfile e `docker-compose.yml`.
+
+O ficheiro principal da entrega será um `.zip` com o seguinte formato:
+
+```text
+T6-Nome1-Nome2-Nome3-Nome4-Nome5.zip
+
+## 23. Checklist final de entrega
+
+- [ ] O ficheiro `.zip` tem menos de 10 MB.
+- [ ] O nome do ficheiro segue a nomenclatura pedida.
+- [ ] O código está incluído.
+- [ ] O README explica como correr o projecto.
+- [ ] O `docker-compose.yml` está incluído.
+- [ ] O `.env.example` está incluído.
+- [ ] O diagrama de sistema está incluído.
+- [ ] O diagrama de ataque está incluído.
+- [ ] A especificação técnica está incluída.
+- [ ] Os testes ou instruções de teste estão incluídos.
+- [ ] Não foram incluídas dependências pesadas como `node_modules` ou `.venv`.
+- [ ] A aplicação foi testada antes de compactar.
+
 Conclusão: esta especificação cobre todos os requisitos obrigatórios e todos os requisitos de fortalecimento indicados no enunciado.
+
+
 
