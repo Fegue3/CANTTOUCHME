@@ -1,125 +1,178 @@
-# Demonstracao do Ataque
+# Demonstração do Ataque
 
 ## Objetivo
 
-Mostrar que um adversario com acesso directo a base de dados nao consegue remover
-registos sem ser detectado pela aplicacao.
-
-O ataque escolhido e a **remocao de um bloco intermedio**. Este e o cenario mais
-forte porque:
-
-- O bloco seguinte ao removido tem um `previous_hash` que ja nao aponta para nenhum
-  bloco existente na cadeia.
-- Todos os blocos a partir desse ponto ficam marcados como afectados.
-- Simula o cenario real de um atacante a tentar apagar um registo comprometedor.
+Mostrar que um adversário que consiga obter o token de sessão de um utilizador
+consegue ler todos os registos em texto claro — apesar de estarem cifrados na base
+de dados — sem precisar de acesso direto ao PostgreSQL, sem conhecer a palavra-passe
+e sem quebrar qualquer primitiva criptográfica.
 
 ---
 
-## Preparacao
+## Como funciona a sessão na aplicação
 
-Arrancar a aplicacao:
+Quando um utilizador faz login, o backend:
+
+1. Valida a palavra-passe com bcrypt.
+2. Deriva as chaves de cifra e integridade a partir da palavra-passe.
+3. Guarda essas chaves em memória associadas a um `session_id` aleatório.
+4. Emite um **JWT** que contém o `user_id` e o `session_id`.
+
+O frontend guarda esse JWT em `sessionStorage` com a chave `canttouchme_token`.
+
+Em cada pedido subsequente, o frontend envia o JWT no cabeçalho
+`Authorization: Bearer <token>`. O backend valida o JWT, recupera as chaves da sessão
+em memória, e usa-as para decifrar os registos antes de os devolver.
+
+**Consequência:** quem tiver o JWT consegue pedir os registos ao backend e recebê-los
+em texto limpo. O backend faz toda a decifra. O atacante não precisa de saber a
+palavra-passe nem de ter acesso à base de dados.
+
+---
+
+## Superfície de ataque: sessionStorage
+
+`sessionStorage` é um espaço de armazenamento do browser acessível a qualquer
+JavaScript que corra na mesma origem (mesmo protocolo, domínio e porta).
+
+Isto significa que:
+
+- Um script malicioso injetado via XSS na aplicação pode ler o token.
+- Alguém com acesso físico ao browser pode ler o token pela consola de
+  desenvolvimento.
+- Uma extensão de browser com permissões sobre a página pode ler o token.
+
+`sessionStorage` é ligeiramente melhor do que `localStorage` porque o token
+desaparece quando o separador ou o browser é fechado, mas continua a ser acessível
+a qualquer JavaScript durante a sessão ativa.
+
+---
+
+## Preparação
+
+Arrancar a aplicação:
 
 ```powershell
 .\setup.ps1
 ```
 
-Na aplicacao (http://localhost:5173):
+Na aplicação (http://localhost:5173):
 
 1. Criar uma conta em `/register`.
-2. Escrever **pelo menos tres registos** em `/app`.
-3. Abrir `/records` e confirmar que todos os blocos aparecem como **validos**.
-4. Abrir `/chain-status` e confirmar que a cadeia esta **valida**.
+2. Iniciar sessão em `/login`.
+3. Escrever **pelo menos três registos** em `/app` — usar conteúdo realista, por
+   exemplo datas, nomes de pessoas ou informação pessoal.
+4. Abrir `/records` e confirmar que todos os registos aparecem decifrados e válidos.
 
 ---
 
 ## Executar o ataque
 
-### 1. Ligar ao PostgreSQL dentro do container
+### Passo 1 — Roubar o token de sessão
 
-```powershell
-docker exec -it canttouchme-db psql -U canttouchme -d canttouchme
+Abrir as ferramentas de desenvolvimento do browser (`F12`) e ir à consola.
+Executar:
+
+```javascript
+const token = sessionStorage.getItem('canttouchme_token');
+console.log(token);
 ```
 
-### 2. Ver os blocos existentes
+O JWT aparece na consola. Copiar o valor — é uma string longa que começa por
+`eyJ`.
 
-```sql
-SELECT r.block_index, r.id, u.email
-FROM records r
-JOIN users u ON u.id = r.user_id
-ORDER BY u.email, r.block_index;
-```
+Este passo simula o que um script XSS faria automaticamente e silenciosamente:
+ler o token e enviá-lo para um servidor controlado pelo atacante.
 
-### 3. Apagar o bloco intermedio (bloco 2)
+### Passo 2 — Exfiltrar todos os registos em texto claro
 
-```sql
-DELETE FROM records
-WHERE block_index = 2
-  AND user_id = (SELECT id FROM users WHERE email = 'email-do-utilizador@exemplo.com');
-```
+Na máquina do atacante, com o token copiado, executar:
 
-Substituir `email-do-utilizador@exemplo.com` pelo email usado no registo.
+```python
+import requests
 
-### 4. Sair do PostgreSQL
+TOKEN = "eyJ..."  # colar aqui o token copiado no passo 1
 
-```sql
-\q
+resposta = requests.get(
+    "http://localhost:8000/records?page_size=50",
+    headers={"Authorization": f"Bearer {TOKEN}"},
+)
+
+dados = resposta.json()
+print(f"Total de registos: {dados['total']}\n")
+
+for registo in dados["records"]:
+    print(f"--- Bloco {registo['block_index']} ({registo['timestamp']}) ---")
+    print(registo["text"])
+    print()
 ```
 
 ---
 
 ## Resultado esperado
 
-Voltar a aplicacao:
+O script imprime todos os registos em texto limpo, ordenados por bloco.
 
-- Em `/records`: o bloco 3 (e seguintes) aparecem com estado `invalid_previous_hash`
-  ou `chain_affected` porque o seu `previous_hash` ja nao corresponde a nenhum bloco
-  existente.
-- Em `/chain-status`: a cadeia aparece como **invalida**, com indicacao do primeiro
-  bloco afectado.
+Exemplo de saída:
 
-A aplicacao detecta a remocao sem necessidade de qualquer intervencao do utilizador.
+```
+Total de registos: 3
+
+--- Bloco 1 (2026-05-20T10:15:00Z) ---
+Hoje tive uma reunião difícil com o meu chefe. Ele mencionou que...
+
+--- Bloco 2 (2026-05-21T09:30:00Z) ---
+Fui ao médico. O resultado dos exames indica que...
+
+--- Bloco 3 (2026-05-22T22:00:00Z) ---
+Decidi mudar a palavra-passe de todas as contas. A nova é...
+```
+
+O atacante obteve o conteúdo completo do diário pessoal sem:
+
+- conhecer a palavra-passe do utilizador;
+- aceder diretamente à base de dados;
+- quebrar AES, HMAC ou RSA;
+- invalidar ou sequer tocar na cadeia de blocos.
 
 ---
 
-## Alternativas de ataque
+## Porque é que a criptografia não protege aqui
 
-As opcoes seguintes tambem funcionam e podem ser usadas para demonstrar validacoes
-diferentes:
+A aplicação cifra os registos na base de dados. Essa proteção funciona contra um
+atacante que consiga acesso direto ao PostgreSQL — os registos estão cifrados e as
+chaves nunca são guardadas na base de dados.
 
-### Opcao A — Corromper o ciphertext de um bloco
+Mas este ataque não passa pela base de dados. Passa pela **API**, como um utilizador
+legítimo. O backend verifica o JWT, encontra a sessão em memória com as chaves
+derivadas da palavra-passe, decifra os registos e devolve-os em texto limpo. É
+exatamente o que faz para o utilizador real.
 
-```sql
-UPDATE records
-SET ciphertext = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=='
-WHERE block_index = 1
-  AND user_id = (SELECT id FROM users WHERE email = 'email-do-utilizador@exemplo.com');
-```
+A cifragem protege **os dados em repouso**. Não protege contra um token comprometido.
 
-Resultado: o bloco 1 aparece com `invalid_hmac` (o HMAC ja nao corresponde ao
-ciphertext alterado) e possivelmente `decrypt_error`. Os blocos seguintes podem
-aparecer como `chain_affected`.
-
-### Opcao C — Falsificar o previous_hash de um bloco
-
-```sql
-UPDATE records
-SET previous_hash = 'FALSIFICADO'
-WHERE block_index = 2
-  AND user_id = (SELECT id FROM users WHERE email = 'email-do-utilizador@exemplo.com');
-```
-
-Resultado: o bloco 2 aparece com `invalid_previous_hash` (o `previous_hash` alterado
-nao corresponde ao `block_hash` do bloco 1) e `invalid_hmac` (porque o HMAC foi
-calculado sobre o `previous_hash` original).
+| Proteção implementada       | O que este ataque faz                          |
+|-----------------------------|------------------------------------------------|
+| AES cifra os registos na BD | O backend decifra antes de devolver            |
+| HMAC verifica integridade   | A integridade está intacta — não há adulteração|
+| RSA assina cada bloco       | As assinaturas são válidas                     |
+| Blockchain deteta remoções  | Nenhum bloco foi removido                      |
+| JWT expira em 30 minutos    | O atacante tem 30 minutos para agir            |
 
 ---
 
-## O que cada validacao deteta
+## Janela de ataque
 
-| Validacao              | O que detecta                                      |
-|------------------------|----------------------------------------------------|
-| `invalid_hmac`         | Qualquer alteracao ao ciphertext, IV, ou metadados |
-| `invalid_block_hash`   | Alteracao ao hash calculado do bloco               |
-| `invalid_previous_hash`| Remocao ou reordenacao de blocos                   |
-| `invalid_rsa_signature`| Alteracao apos a assinatura do sistema             |
-| `chain_affected`       | Blocos validos mas cujo antecessor foi corrompido  |
+O JWT expira ao fim de 30 minutos (`ACCESS_TOKEN_EXPIRE_MINUTES = 30`). O atacante
+tem essa janela para usar o token roubado. Se o utilizador fizer logout antes disso,
+a sessão em memória é removida e o token deixa de funcionar imediatamente.
+
+---
+
+## Defesas possíveis
+
+| Defesa                         | Efeito                                                      |
+|--------------------------------|-------------------------------------------------------------|
+| Guardar o token em cookie HttpOnly | JavaScript deixa de conseguir ler o token              |
+| Content Security Policy (CSP)  | Limita os scripts que podem correr na página               |
+| Tokens de curta duração + refresh | Reduz a janela de ataque                               |
+| Logout automático por inatividade | Invalida a sessão mais cedo                            |
