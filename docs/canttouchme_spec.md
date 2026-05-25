@@ -1191,34 +1191,57 @@ A implementação deve seguir estas regras:
 
 ## 16. Ataque para a apresentação
 
-O ataque escolhido será a alteração ou remoção manual de um bloco antigo na base de dados.
+O ataque é de **roubo de token de sessão** (*session token theft*). O token JWT está
+guardado em `sessionStorage`, que é acessível a qualquer JavaScript que corra na
+mesma origem. A demonstração simula a obtenção do token via consola do browser,
+representando o que um script malicioso, uma extensão comprometida ou acesso
+físico ao computador fariam automaticamente.
 
 ### 16.1 Objectivo
 
-Mostrar que um atacante com acesso directo à base de dados não consegue alterar registos sem ser detectado.
+Mostrar que um adversário que obtenha o token de sessão de um utilizador consegue
+ler todos os registos em texto limpo — sem conhecer a palavra-passe, sem aceder
+directamente à base de dados e sem quebrar qualquer primitiva criptográfica
+(AES, HMAC, RSA ou blockchain).
 
-### 16.2 Passos
+### 16.2 Tipo de ataque
+
+Session token theft — não é XSS. O XSS é um dos vetores possíveis para obter o
+token, mas o ataque em si é o que acontece depois: usar o JWT para aceder à API
+como a vítima. Outros vetores reais incluem extensões de browser maliciosas,
+acesso físico ao browser, captura de tráfego HTTP e supply chain attacks.
+
+### 16.3 Como foram descobertos os endpoints
+
+O FastAPI expõe documentação pública sem autenticação em `/docs`. O endpoint
+`GET /records?page_size=50` e o seu schema de resposta estão visíveis sem qualquer
+credencial. Em alternativa, os pedidos podem ser observados nas DevTools do browser
+na aba Network.
+
+### 16.4 Passos
 
 1. Criar um utilizador.
-2. Criar pelo menos três registos.
-3. Mostrar que todos os registos estão válidos.
-4. Abrir a base de dados PostgreSQL.
-5. Alterar manualmente um campo de um bloco antigo, por exemplo:
-   - `ciphertext`;
-   - `previous_hash`;
-   - `hmac`;
-   - `block_hash`.
-6. Em alternativa, apagar um bloco intermédio.
-7. Voltar à aplicação.
-8. Consultar os registos.
-9. Mostrar que o sistema detecta a alteração.
-10. Explicar que a validação falha por HMAC, hash, assinatura RSA ou quebra da cadeia.
+2. Criar pelo menos três registos com conteúdo realista.
+3. Mostrar que todos os registos estão válidos em `/records`.
+4. Abrir `http://localhost:8000/docs` e identificar o endpoint `GET /records`.
+5. Abrir as DevTools do browser (`F12`) e na consola executar:
+   ```javascript
+   const token = sessionStorage.getItem('canttouchme_token');
+   console.log(token);
+   ```
+6. Copiar o JWT da consola.
+7. Na máquina do atacante, executar o script Python do `docs/attack_demo.md` com
+   o token copiado.
+8. Mostrar que o script devolve todos os registos em texto limpo.
+9. Explicar que o backend decifra os registos legitimamente porque o JWT é válido.
 
-### 16.3 Resultado esperado
+### 16.5 Resultado esperado
 
-O bloco alterado deve aparecer como inválido.
+O script imprime todos os registos em texto limpo.
 
-Se a cadeia for quebrada, os blocos seguintes devem aparecer como afectados.
+O atacante lê o diário completo sem saber a palavra-passe, sem tocar na base de
+dados e sem invalidar a blockchain — toda a criptografia implementada permanece
+intacta e válida.
 
 ---
 
@@ -1424,7 +1447,7 @@ Paginação máxima: 50 registos
 Filtros: data inicial, data final, estado
 Apagar registos pela aplicação: não permitido
 Editar registos pela aplicação: não permitido
-Ataque da apresentação: alterar ou apagar bloco antigo na base de dados
+Ataque da apresentação: roubo do JWT de sessionStorage via XSS e exfiltração de registos pela API
 ```
 
 ---
