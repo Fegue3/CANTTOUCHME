@@ -124,16 +124,18 @@ O ataque demonstrado e de **brute-force ao login** — o atacante tenta adivinha
 
 **1. Preparar conta-alvo**
 
+Criar um utilizador pelo frontend em `http://localhost:5173/register`, ou via API:
+
 ```powershell
 curl -X POST http://localhost:8000/auth/register `
   -H "Content-Type: application/json" `
-  -d '{"email":"vitima@demo.pt","password":"segredo123","encryption_algorithm":"AES_CBC","hmac_algorithm":"HMAC_SHA256"}'
+  -d '{"email":"<email-alvo>","password":"<password>","encryption_algorithm":"AES_CBC","hmac_algorithm":"HMAC_SHA256"}'
 ```
 
 **2. Executar o ataque**
 
 ```bash
-python attack_brute_force_demo.py --target vitima@demo.pt
+python attack_brute_force_demo.py --target <email-alvo>
 ```
 
 **3. Resultado esperado**

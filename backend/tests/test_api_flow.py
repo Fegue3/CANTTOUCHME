@@ -9,6 +9,7 @@ os.environ["PBKDF2_ITERATIONS"] = "1000"
 
 from app.config import get_settings  # noqa: E402
 from app.database import check_database, get_connection, init_db  # noqa: E402
+from app.limiter import limiter  # noqa: E402
 from app.main import app  # noqa: E402
 from app.services.session_service import clear_sessions  # noqa: E402
 
@@ -23,8 +24,10 @@ if check_database().status != "ok":
 def client() -> TestClient:
     init_db()
     clear_sessions()
+    limiter._enabled = False
     with TestClient(app) as test_client:
         yield test_client
+    limiter._enabled = True
     clear_sessions()
 
 

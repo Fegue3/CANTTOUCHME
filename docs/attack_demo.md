@@ -97,16 +97,18 @@ tornando o brute-force inviável.
 
 ### 2. Registar uma conta-alvo (uma vez)
 
+Criar um utilizador através do frontend em `http://localhost:5173/register`, ou via API:
+
 ```powershell
 curl -X POST http://localhost:8000/auth/register `
   -H "Content-Type: application/json" `
-  -d '{"email":"vitima@demo.pt","password":"segredo123","encryption_algorithm":"AES_CBC","hmac_algorithm":"HMAC_SHA256"}'
+  -d '{"email":"<email-alvo>","password":"<password>","encryption_algorithm":"AES_CBC","hmac_algorithm":"HMAC_SHA256"}'
 ```
 
 ### 3. Correr o script de ataque
 
 ```bash
-python attack_brute_force_demo.py --target vitima@demo.pt
+python attack_brute_force_demo.py --target <email-alvo>
 ```
 
 O script tenta 20 passwords da wordlist sequencialmente e mostra o resultado de
@@ -117,7 +119,7 @@ cada tentativa em tempo real.
 ## Resultado esperado
 
 ```
-[*] Alvo:    vitima@demo.pt
+[*] Alvo:    <email-alvo>
 [*] Endpoint: http://localhost:8000/auth/login
 [*] Wordlist: 20 passwords
 

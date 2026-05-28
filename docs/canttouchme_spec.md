@@ -1230,7 +1230,7 @@ o schema exacto de `POST /auth/login`, o que facilita a construção do ataque.
 2. Registar uma conta-alvo (pode ser feito via `/register` no frontend ou via curl).
 3. Executar o script de ataque:
    ```bash
-   python attack_brute_force_demo.py --target vitima@demo.pt
+   python attack_brute_force_demo.py --target <email-alvo>
    ```
 4. Observar as primeiras 5 tentativas a retornar `401 Unauthorized`.
 5. Observar os pedidos seguintes a retornar `429 Too Many Requests — BLOQUEADO!`.
