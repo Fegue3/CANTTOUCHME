@@ -114,59 +114,34 @@ docker compose exec backend python -m pytest -v
 | Assinatura digital      | RSA-PSS com SHA-256, chave de 2048 bits      |
 | Expiracao JWT / sessao  | 30 minutos                                   |
 | Chave privada RSA       | Cifrada na base de dados com `SYSTEM_RSA_KEY_ENCRYPTION_SECRET` |
+| Rate limiting           | slowapi — por IP; login 5/min, registo 3/min, records 20-30/min |
 
 ---
 
 ## Demonstracao do ataque
 
-O ataque e de **roubo de token de sessao** (*session token theft*). Um adversario que obtenha o JWT de um utilizador consegue ler todos os registos em texto limpo — sem conhecer a palavra-passe, sem aceder a base de dados e sem quebrar qualquer primitiva criptografica.
+O ataque demonstrado e de **brute-force ao login** — o atacante tenta adivinhar a palavra-passe de um utilizador enviando pedidos rapidos e sucessivos ao endpoint `POST /auth/login`. A defesa implementada e **rate limiting por IP** (5 pedidos/minuto no login), que bloqueia o ataque com `429 Too Many Requests` a partir do 6.o pedido.
 
-**1. Preparar dados**
-- Registar um utilizador
-- Criar pelo menos tres registos com conteudo realista
-- Confirmar em `/records` que todos os registos aparecem decifrados e validos
+**1. Preparar conta-alvo**
 
-**2. Descobrir os endpoints**
-
-A API tem documentacao publica sem autenticacao em `http://localhost:8000/docs`. O endpoint `GET /records?page_size=50` esta visivel com todos os parametros e o schema de resposta.
-
-**3. Roubar o token de sessao**
-
-Com a sessao ativa, abrir as DevTools do browser (`F12`) e na consola executar:
-
-```javascript
-const token = sessionStorage.getItem('canttouchme_token');
-console.log(token);
+```powershell
+curl -X POST http://localhost:8000/auth/register `
+  -H "Content-Type: application/json" `
+  -d '{"email":"vitima@demo.pt","password":"segredo123","encryption_algorithm":"AES_CBC","hmac_algorithm":"HMAC_SHA256"}'
 ```
 
-Copiar o valor — comeca por `eyJ`.
+**2. Executar o ataque**
 
-**4. Exfiltrar todos os registos**
-
-```python
-import requests
-
-TOKEN = "eyJ..."  # colar o token aqui
-
-r = requests.get(
-    "http://localhost:8000/records?page_size=50",
-    headers={"Authorization": f"Bearer {TOKEN}"},
-)
-
-dados = r.json()
-print(f"Total de registos: {dados['total']}\n")
-
-for reg in dados["records"]:
-    print(f"--- Bloco {reg['block_index']} ({reg['timestamp']}) ---")
-    print(reg["text"])
-    print()
+```bash
+python attack_brute_force_demo.py --target vitima@demo.pt
 ```
 
-**5. Resultado esperado**
-- O script imprime todos os registos em texto limpo
-- O atacante le o diario completo sem saber a palavra-passe, sem tocar na base de dados e sem invalidar a blockchain
+**3. Resultado esperado**
+- Tentativas 1-5: `401 Unauthorized` (password errada mas pedido processado)
+- Tentativas 6+: `429 Too Many Requests — BLOQUEADO!` (rate limiter activo)
+- O script mostra um sumario com quantos pedidos foram bloqueados
 
-Ver [docs/attack_demo.md](docs/attack_demo.md) para detalhes completos, vetores reais de obtencao do token e demonstracao com dois browsers.
+Ver [docs/attack_demo.md](docs/attack_demo.md) para o fluxo completo, diagramas e contexto do ataque.
 
 ---
 

@@ -1,9 +1,10 @@
 from datetime import date
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from app.dependencies import AuthContext, require_auth
+from app.limiter import limiter
 from app.schemas.record import (
     ChainStateValidation,
     ChainStatusResponse,
@@ -19,7 +20,9 @@ router = APIRouter(prefix="/records", tags=["records"])
 
 
 @router.post("", response_model=RecordCreateResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit("20/minute")
 def create_record(
+    request: Request,
     payload: RecordCreateRequest,
     context: AuthContext = Depends(require_auth),
 ) -> RecordCreateResponse:
@@ -32,7 +35,9 @@ def create_record(
 
 
 @router.get("", response_model=RecordsListResponse)
+@limiter.limit("30/minute")
 def list_records(
+    request: Request,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=10, ge=1, le=50),
     start_date: date | None = None,
@@ -53,7 +58,8 @@ def list_records(
 
 
 @router.get("/chain/status", response_model=ChainStatusResponse)
-def chain_status(context: AuthContext = Depends(require_auth)) -> ChainStatusResponse:
+@limiter.limit("20/minute")
+def chain_status(request: Request, context: AuthContext = Depends(require_auth)) -> ChainStatusResponse:
     records = record_service.validate_records(context.user, context.session)
     chain_state: ChainStateValidation = record_service.validate_chain_state(context.user["id"])
     valid_blocks = sum(1 for record in records if record.validation.overall == "valid")
@@ -78,7 +84,9 @@ def chain_status(context: AuthContext = Depends(require_auth)) -> ChainStatusRes
 
 
 @router.get("/{record_id}/verify", response_model=RecordVerifyResponse)
+@limiter.limit("30/minute")
 def verify_record(
+    request: Request,
     record_id: UUID,
     context: AuthContext = Depends(require_auth),
 ) -> RecordVerifyResponse:

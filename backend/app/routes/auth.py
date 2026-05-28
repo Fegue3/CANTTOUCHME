@@ -1,9 +1,10 @@
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from app.database import get_connection
 from app.dependencies import AuthContext, require_auth
+from app.limiter import limiter
 from app.schemas.auth import (
     LoginRequest,
     LoginResponse,
@@ -35,7 +36,8 @@ def _get_user_by_email(email: str) -> dict | None:
 
 
 @router.post("/register", response_model=MessageResponse, status_code=status.HTTP_201_CREATED)
-def register(payload: RegisterRequest) -> MessageResponse:
+@limiter.limit("3/minute")
+def register(request: Request, payload: RegisterRequest) -> MessageResponse:
     email = payload.email.lower()
     if _get_user_by_email(email) is not None:
         raise HTTPException(
@@ -73,7 +75,8 @@ def register(payload: RegisterRequest) -> MessageResponse:
 
 
 @router.post("/login", response_model=LoginResponse)
-def login(payload: LoginRequest) -> LoginResponse:
+@limiter.limit("5/minute")
+def login(request: Request, payload: LoginRequest) -> LoginResponse:
     user = _get_user_by_email(payload.email)
     if user is None or not password_service.verify_password(payload.password, user["password_hash"]):
         raise HTTPException(

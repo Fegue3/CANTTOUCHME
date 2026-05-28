@@ -1122,6 +1122,7 @@ A implementação deve seguir estas regras:
 15. Mensagens de erro não devem revelar informação sensível.
 16. A chave privada RSA não pode estar em texto limpo na base de dados.
 17. A aplicação deve rejeitar pedidos autenticados se a sessão em memória já tiver expirado.
+18. Todos os endpoints públicos e autenticados devem ter rate limiting por IP para prevenir ataques de força bruta e exfiltração em massa.
 
 ---
 
@@ -1191,57 +1192,59 @@ A implementação deve seguir estas regras:
 
 ## 16. Ataque para a apresentação
 
-O ataque é de **roubo de token de sessão** (*session token theft*). O token JWT está
-guardado em `sessionStorage`, que é acessível a qualquer JavaScript que corra na
-mesma origem. A demonstração simula a obtenção do token via consola do browser,
-representando o que um script malicioso, uma extensão comprometida ou acesso
-físico ao computador fariam automaticamente.
+O ataque demonstrado é de **brute-force ao login** (*password brute-force attack*).
+O atacante conhece ou suspeita do email da vítima e envia repetidamente pedidos a
+`POST /auth/login` com passwords diferentes, tentando adivinhar a credencial.
+
+A defesa implementada é **rate limiting por IP** usando `slowapi`. Após 5 pedidos
+por minuto ao endpoint de login, o servidor responde com `429 Too Many Requests`,
+tornando o ataque inviável.
 
 ### 16.1 Objectivo
 
-Mostrar que um adversário que obtenha o token de sessão de um utilizador consegue
-ler todos os registos em texto limpo — sem conhecer a palavra-passe, sem aceder
-directamente à base de dados e sem quebrar qualquer primitiva criptográfica
-(AES, HMAC, RSA ou blockchain).
+Mostrar o contraste entre o que acontece sem protecção (todos os pedidos são
+processados, o atacante pode tentar milhares de passwords por minuto) e com rate
+limiting activo (o ataque é bloqueado ao 6.º pedido, com `Retry-After` a indicar
+quando pode tentar novamente).
 
 ### 16.2 Tipo de ataque
 
-Session token theft — não é XSS. O XSS é um dos vetores possíveis para obter o
-token, mas o ataque em si é o que acontece depois: usar o JWT para aceder à API
-como a vítima. Outros vetores reais incluem extensões de browser maliciosas,
-acesso físico ao browser, captura de tráfego HTTP e supply chain attacks.
+Brute-force login — o atacante não tem qualquer credencial e tenta adivinhar a
+password por força bruta com uma wordlist. O endpoint `/docs` é público e expõe
+o schema exacto de `POST /auth/login`, o que facilita a construção do ataque.
 
-### 16.3 Como foram descobertos os endpoints
+### 16.3 Limites de rate por endpoint
 
-O FastAPI expõe documentação pública sem autenticação em `/docs`. O endpoint
-`GET /records?page_size=50` e o seu schema de resposta estão visíveis sem qualquer
-credencial. Em alternativa, os pedidos podem ser observados nas DevTools do browser
-na aba Network.
+| Endpoint                    | Limite      |
+|-----------------------------|-------------|
+| `POST /auth/login`          | 5 / minuto  |
+| `POST /auth/register`       | 3 / minuto  |
+| `GET /records`              | 30 / minuto |
+| `POST /records`             | 20 / minuto |
+| `GET /records/chain/status` | 20 / minuto |
+| `GET /records/{id}/verify`  | 30 / minuto |
 
 ### 16.4 Passos
 
-1. Criar um utilizador.
-2. Criar pelo menos três registos com conteúdo realista.
-3. Mostrar que todos os registos estão válidos em `/records`.
-4. Abrir `http://localhost:8000/docs` e identificar o endpoint `GET /records`.
-5. Abrir as DevTools do browser (`F12`) e na consola executar:
-   ```javascript
-   const token = sessionStorage.getItem('canttouchme_token');
-   console.log(token);
+1. Arrancar a aplicação com `.\setup.ps1`.
+2. Registar uma conta-alvo (pode ser feito via `/register` no frontend ou via curl).
+3. Executar o script de ataque:
+   ```bash
+   python attack_brute_force_demo.py --target vitima@demo.pt
    ```
-6. Copiar o JWT da consola.
-7. Na máquina do atacante, executar o script Python do `docs/attack_demo.md` com
-   o token copiado.
-8. Mostrar que o script devolve todos os registos em texto limpo.
-9. Explicar que o backend decifra os registos legitimamente porque o JWT é válido.
+4. Observar as primeiras 5 tentativas a retornar `401 Unauthorized`.
+5. Observar os pedidos seguintes a retornar `429 Too Many Requests — BLOQUEADO!`.
+6. Discutir o que aconteceria sem rate limiting (ataque continuaria indefinidamente).
 
 ### 16.5 Resultado esperado
 
-O script imprime todos os registos em texto limpo.
+As primeiras 5 tentativas passam (retornam `401` — credenciais erradas mas
+processadas). A partir do 6.º pedido o rate limiter bloqueia com `429`, e o
+atacante fica impedido de continuar durante ~1 minuto. O script imprime um sumário
+final com o número de pedidos bloqueados.
 
-O atacante lê o diário completo sem saber a palavra-passe, sem tocar na base de
-dados e sem invalidar a blockchain — toda a criptografia implementada permanece
-intacta e válida.
+Ver [attack_demo.md](attack_demo.md) para fluxos ASCII detalhados e instruções
+completas de execução.
 
 ---
 
@@ -1447,7 +1450,8 @@ Paginação máxima: 50 registos
 Filtros: data inicial, data final, estado
 Apagar registos pela aplicação: não permitido
 Editar registos pela aplicação: não permitido
-Ataque da apresentação: roubo do JWT de sessionStorage via XSS e exfiltração de registos pela API
+Ataque da apresentação: brute-force ao POST /auth/login com wordlist; bloqueado por rate limiting (5 req/min por IP)
+Rate limiting: slowapi por IP — login 5/min, registo 3/min, records 20-30/min
 ```
 
 ---
