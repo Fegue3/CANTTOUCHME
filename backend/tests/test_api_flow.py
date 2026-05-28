@@ -24,10 +24,10 @@ if check_database().status != "ok":
 def client() -> TestClient:
     init_db()
     clear_sessions()
-    limiter._enabled = False
+    limiter.enabled = False
     with TestClient(app) as test_client:
         yield test_client
-    limiter._enabled = True
+    limiter.enabled = True
     clear_sessions()
 
 
