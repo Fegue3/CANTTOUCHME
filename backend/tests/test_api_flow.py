@@ -1,3 +1,5 @@
+# End-to-end API tests covering auth, record integrity and chain checks.
+
 import os
 from uuid import uuid4
 
@@ -22,6 +24,7 @@ if check_database().status != "ok":
 
 @pytest.fixture()
 def client() -> TestClient:
+    # Provide an isolated FastAPI client with a clean session state.
     init_db()
     clear_sessions()
     limiter.enabled = False
@@ -32,10 +35,12 @@ def client() -> TestClient:
 
 
 def _email(prefix: str) -> str:
+    # Create a unique email address for a test user.
     return f"{prefix}-{uuid4()}@example.com"
 
 
 def _register(client: TestClient, email: str, algorithm: str = "AES-128-CBC", hmac: str = "HMAC-SHA256") -> None:
+    # Register a user with the supplied crypto algorithm choices.
     response = client.post(
         "/auth/register",
         json={
@@ -50,6 +55,7 @@ def _register(client: TestClient, email: str, algorithm: str = "AES-128-CBC", hm
 
 
 def _login(client: TestClient, email: str) -> str:
+    # Log a user in and return the bearer token from the response.
     response = client.post(
         "/auth/login",
         json={"email": email, "password": "CorrectHorse1"},
@@ -59,6 +65,7 @@ def _login(client: TestClient, email: str) -> str:
 
 
 def test_register_login_create_list_and_tamper_detection(client: TestClient) -> None:
+    # Exercise the main happy path plus ciphertext tampering detection.
     email = _email("flow")
     _register(client, email, "AES-128-CTR", "HMAC-SHA512")
 
@@ -125,6 +132,7 @@ def test_register_login_create_list_and_tamper_detection(client: TestClient) -> 
 
 
 def test_authorization_is_per_user(client: TestClient) -> None:
+    # Confirm one user cannot inspect another user's records.
     first_email = _email("first")
     second_email = _email("second")
     _register(client, first_email)
@@ -153,6 +161,7 @@ def test_authorization_is_per_user(client: TestClient) -> None:
 
 
 def _create_user_with_three_records(client: TestClient, prefix: str) -> tuple[str, str]:
+    # Create a user with three valid records and return their login token.
     email = _email(prefix)
     _register(client, email)
     token = _login(client, email)
@@ -167,6 +176,7 @@ def _create_user_with_three_records(client: TestClient, prefix: str) -> tuple[st
 
 
 def test_chain_detects_previous_hash_tampering(client: TestClient) -> None:
+    # Detect a broken previous-hash link in the chain.
     email, token = _create_user_with_three_records(client, "prev")
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -191,6 +201,7 @@ def test_chain_detects_previous_hash_tampering(client: TestClient) -> None:
 
 
 def test_chain_detects_iv_or_nonce_tampering(client: TestClient) -> None:
+    # Detect tampering that only affects the encrypted payload fields.
     email, token = _create_user_with_three_records(client, "iv")
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -215,6 +226,7 @@ def test_chain_detects_iv_or_nonce_tampering(client: TestClient) -> None:
 
 
 def test_chain_detects_block_hash_tampering(client: TestClient) -> None:
+    # Detect a modified block hash.
     email, token = _create_user_with_three_records(client, "hash")
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -239,6 +251,7 @@ def test_chain_detects_block_hash_tampering(client: TestClient) -> None:
 
 
 def test_chain_detects_rsa_signature_tampering(client: TestClient) -> None:
+    # Detect a tampered RSA signature.
     email, token = _create_user_with_three_records(client, "rsa")
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -263,6 +276,7 @@ def test_chain_detects_rsa_signature_tampering(client: TestClient) -> None:
 
 
 def test_chain_detects_intermediate_block_deletion(client: TestClient) -> None:
+    # Detect a removed middle block via the chain-state summary.
     email, token = _create_user_with_three_records(client, "delete")
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -286,6 +300,7 @@ def test_chain_detects_intermediate_block_deletion(client: TestClient) -> None:
 
 
 def test_chain_detects_last_block_deletion(client: TestClient) -> None:
+    # Detect a removed last block via the stored chain state.
     email, token = _create_user_with_three_records(client, "last")
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -310,6 +325,7 @@ def test_chain_detects_last_block_deletion(client: TestClient) -> None:
 
 
 def test_system_private_key_is_stored_encrypted(client: TestClient) -> None:
+    # Ensure the active RSA private key is stored encrypted at rest.
     email = _email("key")
     _register(client, email)
     _login(client, email)

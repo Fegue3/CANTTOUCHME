@@ -1,3 +1,5 @@
+# Unit tests for the canonical JSON and crypto helper functions.
+
 import json
 
 from app.config import get_settings
@@ -6,6 +8,7 @@ from app.utils.canonical_json import canonical_json_dumps
 
 
 def test_canonical_json_is_stable() -> None:
+    # Confirm canonical JSON output is independent of key ordering.
     left = {"text": "abc", "timestamp": "2026-05-07T14:30:00Z"}
     right = {"timestamp": "2026-05-07T14:30:00Z", "text": "abc"}
 
@@ -13,6 +16,7 @@ def test_canonical_json_is_stable() -> None:
 
 
 def test_aes_cbc_and_ctr_round_trip(monkeypatch) -> None:
+    # Confirm both supported AES modes can encrypt and decrypt correctly.
     monkeypatch.setenv("PBKDF2_ITERATIONS", "1000")
     get_settings.cache_clear()
 
@@ -29,6 +33,7 @@ def test_aes_cbc_and_ctr_round_trip(monkeypatch) -> None:
 
 
 def test_hmac_detects_tampering(monkeypatch) -> None:
+    # Confirm the HMAC helper rejects mutated protected fields.
     monkeypatch.setenv("PBKDF2_ITERATIONS", "1000")
     get_settings.cache_clear()
 

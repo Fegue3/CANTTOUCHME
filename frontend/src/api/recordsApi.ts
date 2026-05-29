@@ -1,3 +1,5 @@
+// Record API calls for creating, listing and checking chain integrity.
+
 import { requestJson } from "./http";
 import type { ChainStatusResponse, RecordsListResponse } from "../types";
 
@@ -10,6 +12,7 @@ export type ListRecordsParams = {
 };
 
 export function createRecord(token: string, text: string) {
+  // Create a new encrypted record for the active user.
   return requestJson<{ id: string; block_index: number; message: string }>("/records", {
     method: "POST",
     token,
@@ -18,6 +21,7 @@ export function createRecord(token: string, text: string) {
 }
 
 export function listRecords(token: string, params: ListRecordsParams) {
+  // Fetch a paginated record list with optional filters.
   const search = new URLSearchParams();
   search.set("page", String(params.page));
   search.set("page_size", String(params.page_size));
@@ -29,9 +33,11 @@ export function listRecords(token: string, params: ListRecordsParams) {
 }
 
 export function chainStatus(token: string) {
+  // Fetch the aggregated status of the user's record chain.
   return requestJson<ChainStatusResponse>("/records/chain/status", { token });
 }
 
 export function verifyRecord(token: string, recordId: string) {
+  // Validate a single record by id.
   return requestJson(`/records/${recordId}/verify`, { token });
 }

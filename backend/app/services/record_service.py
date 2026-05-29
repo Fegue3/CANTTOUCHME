@@ -1,3 +1,5 @@
+# Record creation, validation and chain-state consistency helpers.
+
 from __future__ import annotations
 
 import json
@@ -17,6 +19,7 @@ GENESIS_HASH = "GENESIS"
 
 
 def _record_payload(text: str, timestamp: datetime) -> dict[str, str]:
+    # Build the plaintext record payload before encryption.
     return {
         "timestamp": timestamp.isoformat().replace("+00:00", "Z"),
         "text": text,
@@ -32,6 +35,7 @@ def _protected_fields(
     encryption_algorithm: str,
     hmac_algorithm: str,
 ) -> dict[str, str | int]:
+    # Collect the fields that must remain stable for integrity checks.
     return {
         "user_id": user_id,
         "block_index": block_index,
@@ -44,6 +48,13 @@ def _protected_fields(
 
 
 def create_record(user: dict[str, Any], session: SessionKeys, text: str) -> dict[str, Any]:
+    # This function builds the canonical plaintext payload, encrypts
+    # it with the session's encryption key, computes an HMAC over the
+    # immutable "protected" fields, then computes the block hash over the
+    # protected fields + HMAC. It signs the block and the updated chain_state
+    # using the system RSA key and stores both the new record and an upserted
+    # chain_state row inside a DB transaction while taking row-level locks
+    # (FOR UPDATE) to avoid race conditions on concurrent writers.
     record_id = uuid4()
     timestamp = datetime.now(timezone.utc)
     encryption_algorithm = user["encryption_algorithm"]
@@ -140,6 +151,7 @@ def create_record(user: dict[str, Any], session: SessionKeys, text: str) -> dict
 
 
 def fetch_user_records(user_id: UUID) -> list[dict[str, Any]]:
+    # Load all records for a user in block order.
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -163,6 +175,7 @@ def _overall_status(
     decrypt_valid: bool,
     chain_was_broken: bool,
 ) -> str:
+    # Collapse the individual checks into a single status value.
     if not previous_valid:
         return "invalid_previous_hash"
     if not hmac_valid:
@@ -179,6 +192,16 @@ def _overall_status(
 
 
 def validate_records(user: dict[str, Any], session: SessionKeys) -> list[RecordItem]:
+    # For each stored record this function verifies, in order:
+    # 1) the stored previous_hash and block_index continuity,
+    # 2) the HMAC computed with the user's session integrity key,
+    # 3) the block_hash computed over canonical fields + HMAC,
+    # 4) the RSA signature over the canonical signature fields.
+    # If the HMAC check passes the ciphertext is decrypted and timestamp/text
+    # extracted. Once a record is found invalid the `chain_broken` flag is set
+    # so subsequent blocks are reported as "chain_affected" (they depend on
+    # prior blocks). Returns a list of `RecordItem` with per-block validation
+    # results but performs no corrective writes.
     rows = fetch_user_records(user["id"])
     encryption_algorithm: EncryptionAlgorithm = user["encryption_algorithm"]
     hmac_algorithm: HmacAlgorithm = user["hmac_algorithm"]
@@ -282,6 +305,7 @@ def filter_records(
     end_date: date | None,
     status: str | None,
 ) -> list[RecordItem]:
+    # Apply date and validation filters to an already validated list.
     filtered = records
     if start_date is not None:
         start_at = datetime.combine(start_date, time.min, tzinfo=timezone.utc)
@@ -297,6 +321,7 @@ def filter_records(
 
 
 def find_record_for_user(record_id: UUID, user_id: UUID) -> dict[str, Any] | None:
+    # Confirm whether a record id belongs to the authenticated user.
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -311,6 +336,11 @@ def find_record_for_user(record_id: UUID, user_id: UUID) -> dict[str, Any] | Non
 
 
 def validate_chain_state(user_id: UUID) -> dict[str, Any]:
+    # Reads the chain_state row (if any) and compares the stored
+    # last_hash and block_count with values derived from the records table.
+    # It also verifies the RSA signature that covers the chain-state fields.
+    # Returns a `ChainStateValidation` describing whether the stored state is
+    # `valid`, `missing` or `invalid` and which sub-checks matched.
     from app.schemas.record import ChainStateValidation
 
     with get_connection() as connection:

@@ -1,3 +1,5 @@
+// React entry point that mounts the single-page application.
+
 import React from "react";
 import ReactDOM from "react-dom/client";
 

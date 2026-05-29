@@ -1,3 +1,5 @@
+# Authentication dependencies that resolve the active user session.
+
 from dataclasses import dataclass
 from uuid import UUID
 
@@ -15,12 +17,15 @@ security = HTTPBearer(auto_error=False)
 
 @dataclass(frozen=True)
 class AuthContext:
+    # Resolved user, session and session identifier for protected routes.
+
     user: dict
     session: SessionKeys
     session_id: str
 
 
 def get_user_by_id(user_id: UUID) -> dict | None:
+    # Fetch the public user record needed by authenticated endpoints.
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -37,6 +42,7 @@ def get_user_by_id(user_id: UUID) -> dict | None:
 def require_auth(
     credentials: HTTPAuthorizationCredentials | None = Depends(security),
 ) -> AuthContext:
+    # Validate the bearer token and return the associated auth context.
     if credentials is None or credentials.scheme.lower() != "bearer":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

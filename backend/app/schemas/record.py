@@ -1,3 +1,5 @@
+# Pydantic models for records, validation results and chain status.
+
 from datetime import datetime
 from typing import Literal
 
@@ -19,16 +21,22 @@ ChainStateStatus = Literal["valid", "invalid", "missing"]
 
 
 class RecordCreateRequest(BaseModel):
+    # Payload used to create a new plaintext record.
+
     text: str = Field(min_length=1, max_length=10000)
 
 
 class RecordCreateResponse(BaseModel):
+    # Response returned after a record is stored successfully.
+
     id: str
     block_index: int
     message: str
 
 
 class RecordValidation(BaseModel):
+    # Per-record integrity checks used when listing and verifying data.
+
     hmac: SimpleValidationStatus
     block_hash: SimpleValidationStatus
     previous_hash: SimpleValidationStatus
@@ -38,6 +46,8 @@ class RecordValidation(BaseModel):
 
 
 class RecordItem(BaseModel):
+    # Single record entry returned to the frontend.
+
     id: str
     block_index: int
     timestamp: str | None
@@ -47,6 +57,8 @@ class RecordItem(BaseModel):
 
 
 class RecordsListResponse(BaseModel):
+    # Paginated list of validated records.
+
     page: int
     page_size: int
     total: int
@@ -54,6 +66,8 @@ class RecordsListResponse(BaseModel):
 
 
 class ChainStateValidation(BaseModel):
+    # Validation summary for the stored chain-state row.
+
     status: ChainStateStatus
     block_count_match: bool | None = None
     last_hash_match: bool | None = None
@@ -61,6 +75,8 @@ class ChainStateValidation(BaseModel):
 
 
 class ChainStatusResponse(BaseModel):
+    # Aggregated integrity view of all user blocks plus chain state.
+
     total_blocks: int
     valid_blocks: int
     invalid_blocks: int
@@ -70,6 +86,8 @@ class ChainStatusResponse(BaseModel):
 
 
 class RecordVerifyResponse(BaseModel):
+    # Validation payload for a single verified record.
+
     record_id: str
     block_index: int
     validation: RecordValidation

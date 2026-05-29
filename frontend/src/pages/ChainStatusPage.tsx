@@ -1,3 +1,5 @@
+// Page that loads and displays the user's chain integrity summary.
+
 import React from "react";
 
 import * as recordsApi from "../api/recordsApi";
@@ -11,6 +13,7 @@ export function ChainStatusPage({ token }: { token: string }) {
   const [error, setError] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(false);
 
+  // Fetch the latest chain status from the API.
   const loadStatus = React.useCallback(async () => {
     setLoading(true);
     setError(null);

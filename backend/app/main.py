@@ -1,3 +1,5 @@
+# FastAPI application setup, lifecycle hooks and health endpoints.
+
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -18,6 +20,7 @@ settings = get_settings()
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    # Initialize the database and RSA material before serving requests.
     init_db()
     ensure_active_system_key()
     yield
@@ -38,11 +41,13 @@ app.add_middleware(
 
 @app.get("/")
 def root() -> dict[str, str]:
+    # Return a simple readiness message for the API root.
     return {"message": "CANTTOUCHME API is running"}
 
 
 @app.get("/health")
 def health() -> dict[str, str]:
+    # Expose API and database health in a compact JSON payload.
     database = check_database()
     return {
         "api": "ok",

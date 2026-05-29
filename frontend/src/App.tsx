@@ -1,3 +1,5 @@
+// Top-level app shell that restores auth and chooses the active page.
+
 import React from "react";
 
 import * as authApi from "./api/authApi";
@@ -18,11 +20,13 @@ export function App() {
   const [user, setUser] = React.useState<UserPublic | null>(null);
   const [loading, setLoading] = React.useState(true);
 
+  // Update browser history and the in-memory route state together.
   const navigate = React.useCallback((nextPath: string) => {
     window.history.pushState({}, "", nextPath);
     setPath(nextPath);
   }, []);
 
+  // Drop all auth state from both storage and React state.
   const clearAuth = React.useCallback(() => {
     sessionStorage.removeItem(TOKEN_KEY);
     setToken(null);
@@ -38,6 +42,7 @@ export function App() {
   }, []);
 
   React.useEffect(() => {
+    // Restore the current user from the stored token on first load.
     async function restore() {
       if (!token) {
         setLoading(false);
@@ -55,23 +60,27 @@ export function App() {
   }, [clearAuth, token]);
 
   React.useEffect(() => {
+    // Redirect the bare root path to the appropriate entry screen.
     if (path === "/") {
       navigate(token ? "/app" : "/login");
     }
   }, [navigate, path, token]);
 
   React.useEffect(() => {
+    // Keep authenticated users away from public pages they should not stay on.
     if (token && user && path !== "/register" && path !== "/login" && !protectedPaths.has(path)) {
       navigate("/app");
     }
   }, [navigate, path, token, user]);
 
+  // Persist a successful login in session storage and React state.
   function handleLogin(nextToken: string, nextUser: UserPublic) {
     sessionStorage.setItem(TOKEN_KEY, nextToken);
     setToken(nextToken);
     setUser(nextUser);
   }
 
+  // Clear the local session and try to invalidate the server session too.
   async function handleLogout() {
     if (token) {
       try {

@@ -1,3 +1,5 @@
+# Record endpoints for creation, listing, verification and chain status.
+
 from datetime import date
 from uuid import UUID
 
@@ -26,6 +28,7 @@ def create_record(
     payload: RecordCreateRequest,
     context: AuthContext = Depends(require_auth),
 ) -> RecordCreateResponse:
+    # Store a new encrypted record for the authenticated user.
     record = record_service.create_record(context.user, context.session, payload.text)
     return RecordCreateResponse(
         id=record["id"],
@@ -45,6 +48,7 @@ def list_records(
     status_filter: str | None = Query(default=None, alias="status", pattern="^(valid|invalid)$"),
     context: AuthContext = Depends(require_auth),
 ) -> RecordsListResponse:
+    # Return paginated records filtered by date range and status.
     records = record_service.validate_records(context.user, context.session)
     filtered = record_service.filter_records(records, start_date, end_date, status_filter)
     total = len(filtered)
@@ -60,6 +64,7 @@ def list_records(
 @router.get("/chain/status", response_model=ChainStatusResponse)
 @limiter.limit("20/minute")
 def chain_status(request: Request, context: AuthContext = Depends(require_auth)) -> ChainStatusResponse:
+    # Summarize the integrity of the user's full record chain.
     records = record_service.validate_records(context.user, context.session)
     chain_state: ChainStateValidation = record_service.validate_chain_state(context.user["id"])
     valid_blocks = sum(1 for record in records if record.validation.overall == "valid")
@@ -90,6 +95,7 @@ def verify_record(
     record_id: UUID,
     context: AuthContext = Depends(require_auth),
 ) -> RecordVerifyResponse:
+    # Validate one record after confirming it belongs to the user.
     if record_service.find_record_for_user(record_id, context.user["id"]) is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Record not found")
 

@@ -1,3 +1,5 @@
+# RSA key management and signature helpers for chain state verification.
+
 from __future__ import annotations
 
 import base64
@@ -14,12 +16,14 @@ from app.utils.canonical_json import canonical_json_bytes
 
 
 def _fernet() -> Fernet:
+    # Build the deterministic Fernet instance used to wrap the private key.
     settings = get_settings()
     digest = hashlib.sha256(settings.system_rsa_key_encryption_secret.encode("utf-8")).digest()
     return Fernet(base64.urlsafe_b64encode(digest))
 
 
 def ensure_active_system_key() -> None:
+    # Create an active RSA key pair if the database does not have one yet.
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute("SELECT id FROM system_keys WHERE active = TRUE LIMIT 1")
@@ -50,6 +54,12 @@ def ensure_active_system_key() -> None:
 
 
 def _load_active_private_key() -> rsa.RSAPrivateKey:
+    # Ensures an active system key exists (this may create a new
+    # keypair in the DB). Reads the encrypted PEM from `system_keys`,
+    # decrypts it using the deterministic Fernet instance derived from the
+    # `system_rsa_key_encryption_secret`, and returns a `RSAPrivateKey` object.
+    # Raises a RuntimeError if no key is found or the PEM does not decode to
+    # an RSA private key.
     ensure_active_system_key()
     with get_connection() as connection:
         with connection.cursor() as cursor:
@@ -77,6 +87,9 @@ def _load_active_private_key() -> rsa.RSAPrivateKey:
 
 
 def _load_active_public_key() -> rsa.RSAPublicKey:
+    # Ensures an active system key exists, reads the public PEM
+    # from the DB and deserialises it to an `RSAPublicKey`. This is used for
+    # runtime verification of chain-state and block signatures.
     ensure_active_system_key()
     with get_connection() as connection:
         with connection.cursor() as cursor:
@@ -103,6 +116,7 @@ def _load_active_public_key() -> rsa.RSAPublicKey:
 
 
 def signature_fields(user_id: str, block_index: int, previous_hash: str, block_hash: str) -> dict[str, str | int]:
+    # Return the canonical fields covered by a block signature.
     return {
         "user_id": user_id,
         "block_index": block_index,
@@ -112,6 +126,7 @@ def signature_fields(user_id: str, block_index: int, previous_hash: str, block_h
 
 
 def chain_state_fields(user_id: str, last_hash: str, block_count: int) -> dict[str, str | int]:
+    # Return the canonical fields covered by the chain-state signature.
     return {
         "user_id": user_id,
         "last_hash": last_hash,
@@ -120,6 +135,10 @@ def chain_state_fields(user_id: str, last_hash: str, block_count: int) -> dict[s
 
 
 def sign_block(fields: dict[str, str | int]) -> str:
+    # Loads the active private key and signs the canonical JSON
+    # bytes using RSA-PSS (MGF1 + SHA256). The signature is base64 encoded
+    # for safe storage in text columns. The function intentionally raises on
+    # unexpected errors so callers can surface signing failures.
     private_key = _load_active_private_key()
     signature = private_key.sign(
         canonical_json_bytes(fields),
@@ -133,6 +152,10 @@ def sign_block(fields: dict[str, str | int]) -> str:
 
 
 def verify_signature(fields: dict[str, str | int], signature_b64: str) -> bool:
+    # Loads the active public key and verifies the provided
+    # base64-encoded signature against the canonical JSON bytes using RSA-
+    # PSS. Returns `True` on success and `False` if verification fails or
+    # any error occurs.
     try:
         public_key = _load_active_public_key()
         public_key.verify(

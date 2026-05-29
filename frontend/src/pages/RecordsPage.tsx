@@ -1,3 +1,5 @@
+// History page that lists validated records and exposes filters.
+
 import React from "react";
 
 import * as recordsApi from "../api/recordsApi";
@@ -18,6 +20,7 @@ export function RecordsPage({ token }: { token: string }) {
   const [error, setError] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(false);
 
+  // Fetch the current page of records with all active filters applied.
   const loadRecords = React.useCallback(async () => {
     setLoading(true);
     setError(null);

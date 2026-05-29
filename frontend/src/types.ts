@@ -1,3 +1,5 @@
+// Shared TypeScript types that mirror the API payloads and responses.
+
 export type EncryptionAlgorithm = "AES-128-CBC" | "AES-128-CTR";
 export type HmacAlgorithm = "HMAC-SHA256" | "HMAC-SHA512";
 

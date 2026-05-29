@@ -1,3 +1,5 @@
+# Environment-backed application settings and small parsing helpers.
+
 from dataclasses import dataclass
 from functools import lru_cache
 import os
@@ -6,6 +8,7 @@ from dotenv import load_dotenv
 
 
 def _split_csv(value: str) -> list[str]:
+    # Split a comma-separated environment value into cleaned items.
     return [item.strip() for item in value.split(",") if item.strip()]
 
 
@@ -24,6 +27,7 @@ class Settings:
 
 @lru_cache
 def get_settings() -> Settings:
+    # Load settings once from the environment and cache the result.
     load_dotenv()
 
     return Settings(

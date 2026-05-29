@@ -1,3 +1,5 @@
+// Authenticated application shell with the top navigation bar.
+
 import type { ReactNode } from "react";
 
 import type { UserPublic } from "../types";
@@ -10,6 +12,7 @@ type LayoutProps = {
 };
 
 export function Layout({ user, navigate, onLogout, children }: LayoutProps) {
+  // Wrap protected pages with the shared nav and user controls.
   return (
     <div className="shell">
       <header className="topbar">

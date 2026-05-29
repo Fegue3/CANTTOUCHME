@@ -1,3 +1,5 @@
+// Login screen that authenticates the user and restores the app state.
+
 import React from "react";
 
 import * as authApi from "../api/authApi";
@@ -17,6 +19,7 @@ export function LoginPage({ navigate, onLogin }: LoginPageProps) {
   const [error, setError] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(false);
 
+  // Submit credentials and store the returned session details.
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     setLoading(true);

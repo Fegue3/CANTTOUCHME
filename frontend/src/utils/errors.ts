@@ -1,3 +1,5 @@
+// Error normalization helpers for turning API failures into UI messages.
+
 import { ApiError } from "../api/http";
 
 const errorMessages: Record<string, string> = {
@@ -11,6 +13,7 @@ const errorMessages: Record<string, string> = {
 };
 
 export function friendlyError(error: unknown, fallback: string) {
+  // Map known API failures to localized messages and keep a safe fallback.
   if (error instanceof ApiError) {
     return errorMessages[error.message] ?? fallback;
   }

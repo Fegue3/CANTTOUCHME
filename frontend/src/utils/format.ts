@@ -1,4 +1,7 @@
+// Formatting helpers for dates and validation labels in the UI.
+
 export function formatDate(value: string | null) {
+  // Render API timestamps in the local Portuguese format.
   if (!value) return "Sem data validada";
   return new Intl.DateTimeFormat("pt-PT", {
     dateStyle: "medium",
@@ -7,6 +10,7 @@ export function formatDate(value: string | null) {
 }
 
 export function statusLabel(value: string) {
+  // Translate internal status codes into human-friendly labels.
   const labels: Record<string, string> = {
     valid: "Válido",
     invalid: "Inválido",

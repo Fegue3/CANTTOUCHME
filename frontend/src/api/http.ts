@@ -1,9 +1,12 @@
+// Small fetch wrapper that injects JSON headers and bearer tokens.
+
 export const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 
 export class ApiError extends Error {
   status: number;
 
   constructor(status: number, message: string) {
+    // Keep the HTTP status alongside the human-readable message.
     super(message);
     this.status = status;
   }
@@ -16,6 +19,7 @@ type RequestOptions = {
 };
 
 export async function requestJson<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  // Send a JSON request and normalize HTTP errors into ApiError.
   const headers = new Headers();
   headers.set("Accept", "application/json");
 

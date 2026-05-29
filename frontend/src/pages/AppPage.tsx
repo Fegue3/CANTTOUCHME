@@ -1,3 +1,5 @@
+// Landing page for creating new encrypted records.
+
 import React from "react";
 
 import * as recordsApi from "../api/recordsApi";
@@ -17,6 +19,7 @@ export function AppPage({ token, user, navigate }: AppPageProps) {
   const [error, setError] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(false);
 
+  // Submit a new record and surface the resulting block number.
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     setLoading(true);

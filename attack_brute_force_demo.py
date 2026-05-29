@@ -29,6 +29,7 @@ WORDLIST = [
 
 
 def banner() -> None:
+    # Print the demo title and the security property being exercised.
     print(f"""
 {BOLD}{RED}╔══════════════════════════════════════════════════════╗
 ║         BRUTE-FORCE LOGIN ATTACK DEMO               ║
@@ -41,6 +42,7 @@ def banner() -> None:
 
 
 def attack(base_url: str, target_email: str) -> None:
+    # Send repeated login attempts and report when rate limiting kicks in.
     url = f"{base_url}/auth/login"
 
     print(f"{CYAN}[*] Alvo:{RESET}    {target_email}")
@@ -96,7 +98,7 @@ def attack(base_url: str, target_email: str) -> None:
             errors += 1
             print(f"{YELLOW}[!] Tentativa {i:02d}  |  Timeout{RESET}")
 
-        # pequena pausa entre pedidos (mais realista, mas ainda rápido)
+        # small pause between requests (more realistic but still fast)
         time.sleep(0.1)
 
     print()
@@ -123,6 +125,7 @@ def attack(base_url: str, target_email: str) -> None:
 
 
 def main() -> None:
+    # Parse CLI arguments and run the brute-force demonstration.
     parser = argparse.ArgumentParser(description="Brute-force login demo com rate limiting")
     parser.add_argument("--url",    default="http://localhost:8000", help="URL base da API")
     parser.add_argument("--target", default="demo@canttouchme.pt",  help="Email do alvo")

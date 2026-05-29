@@ -1,3 +1,5 @@
+# Authentication endpoints for registration, login and session lookup.
+
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -21,6 +23,7 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 def _get_user_by_email(email: str) -> dict | None:
+    # Fetch a user row by email for registration and login checks.
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -38,6 +41,7 @@ def _get_user_by_email(email: str) -> dict | None:
 @router.post("/register", response_model=MessageResponse, status_code=status.HTTP_201_CREATED)
 @limiter.limit("3/minute")
 def register(request: Request, payload: RegisterRequest) -> MessageResponse:
+    # Create a new user with the selected crypto algorithms.
     email = payload.email.lower()
     if _get_user_by_email(email) is not None:
         raise HTTPException(
@@ -77,6 +81,7 @@ def register(request: Request, payload: RegisterRequest) -> MessageResponse:
 @router.post("/login", response_model=LoginResponse)
 @limiter.limit("5/minute")
 def login(request: Request, payload: LoginRequest) -> LoginResponse:
+    # Verify credentials, derive session keys and issue an access token.
     user = _get_user_by_email(payload.email)
     if user is None or not password_service.verify_password(payload.password, user["password_hash"]):
         raise HTTPException(
@@ -106,12 +111,14 @@ def login(request: Request, payload: LoginRequest) -> LoginResponse:
 
 @router.post("/logout", response_model=MessageResponse)
 def logout(context: AuthContext = Depends(require_auth)) -> MessageResponse:
+    # Invalidate the current in-memory session.
     delete_session(context.session_id)
     return MessageResponse(message="Logged out successfully")
 
 
 @router.get("/me", response_model=UserPublic)
 def me(context: AuthContext = Depends(require_auth)) -> UserPublic:
+    # Return the authenticated user's public profile details.
     return UserPublic(
         email=context.user["email"],
         encryption_algorithm=context.user["encryption_algorithm"],

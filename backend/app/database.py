@@ -1,3 +1,5 @@
+# Database access helpers and schema bootstrap logic.
+
 from dataclasses import dataclass
 
 import psycopg
@@ -8,11 +10,14 @@ from app.config import get_settings
 
 @dataclass(frozen=True)
 class DatabaseStatus:
+    # Lightweight health-check result for the database connection.
+
     status: str
     detail: str | None = None
 
 
 def check_database() -> DatabaseStatus:
+    # Run a minimal query to confirm the database is reachable.
     settings = get_settings()
 
     try:
@@ -30,11 +35,13 @@ def check_database() -> DatabaseStatus:
 
 
 def get_connection() -> psycopg.Connection:
+    # Open a dictionary-row PostgreSQL connection using the configured URL.
     settings = get_settings()
     return psycopg.connect(settings.database_url, row_factory=dict_row)
 
 
 def init_db() -> None:
+    # Create the tables and indexes required by the application.
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(

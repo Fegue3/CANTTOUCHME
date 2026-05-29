@@ -1,3 +1,5 @@
+// Registration screen that collects credentials and crypto preferences.
+
 import React from "react";
 
 import * as authApi from "../api/authApi";
@@ -16,6 +18,7 @@ export function RegisterPage({ navigate }: { navigate: (path: string) => void })
   const [success, setSuccess] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(false);
 
+  // Create the account and keep the user on the registration flow.
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     setLoading(true);
