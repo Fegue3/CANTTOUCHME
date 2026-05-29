@@ -102,7 +102,7 @@ Criar um utilizador através do frontend em `http://localhost:5173/register`, ou
 ```powershell
 curl -X POST http://localhost:8000/auth/register `
   -H "Content-Type: application/json" `
-  -d '{"email":"<email-alvo>","password":"<password>","encryption_algorithm":"AES_CBC","hmac_algorithm":"HMAC_SHA256"}'
+  -d '{"email":"<email-alvo>","password":"<password>","confirm_password":"<password>","encryption_algorithm":"AES-128-CBC","hmac_algorithm":"HMAC-SHA256"}'
 ```
 
 ### 3. Correr o script de ataque
